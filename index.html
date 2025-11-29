@@ -834,6 +834,7 @@
         <div class="api-tabs">
             <div class="api-tab active" data-api="juhe">聚合音乐</div>
             <div class="api-tab" data-api="qishui">汽水音乐</div>
+            <div class="api-tab" data-api="wyy">网易云音乐</div>
         </div>
         <div class="search-modal-content">
             <input type="text" id="search-input" placeholder="输入歌曲名或歌手">
@@ -936,6 +937,8 @@
             let currentApi = 'juhe'; // 默认使用聚合API
             const API_BASE_URL = 'https://sdkapi.hhlqilongzhu.cn/api/juhe_dgmusic/'; // 聚合音乐API基础地址
             const API_KEY = 'Dragon53FA6A7389AB20A25A6CE425264A4B6A'; 
+            const WYY_API_BASE_URL = 'https://sdkapi.hhlqilongzhu.cn/api/dgMusic_wyy/'; // 网易云音乐API基础地址
+            const WYY_API_KEY = 'Dragon53FA6A7389AB20A25A6CE425264A4B6A'; // 网易云音乐API密钥
             
             // 初始化主题模式
             initTheme();
@@ -988,8 +991,11 @@
                 if (currentApi === 'juhe') {
                     // 聚合音乐搜索请求 - 添加key参数
                     apiUrl = `${API_BASE_URL}?msg=${encodeURIComponent(query)}&type=text&key=${API_KEY}`;
-                } else {
+                } else if (currentApi === 'qishui') {
                     apiUrl = `https://wwm.34bc.com/API/dg_qishuimusic.php?type=text&msg=${encodeURIComponent(query)}`;
+                } else if (currentApi === 'wyy') {
+                    // 网易云音乐搜索请求
+                    apiUrl = `${WYY_API_BASE_URL}?key=${WYY_API_KEY}&gm=${encodeURIComponent(query)}&type=text`;
                 }
                 
                 // 获取歌曲列表
@@ -1023,7 +1029,7 @@
                                         api: 'juhe'
                                     };
                                 }
-                            } else {
+                            } else if (currentApi === 'qishui') {
                                 // 汽水音乐格式：序号、歌名、歌手
                                 const match = line.match(/^(\d+)、(.+?)--(.+)$/);
                                 if (match) {
@@ -1033,6 +1039,18 @@
                                         artist: match[3].trim(),
                                         query: query,
                                         api: 'qishui'
+                                    };
+                                }
+                            } else if (currentApi === 'wyy') {
+                                // 网易云音乐格式：序号、歌名 -- 歌手
+                                const match = line.match(/^(\d+)、(.+?)\s*--\s*(.+)$/);
+                                if (match) {
+                                    return {
+                                        index: match[1],
+                                        title: match[2].trim(),
+                                        artist: match[3].trim(),
+                                        query: query,
+                                        api: 'wyy'
                                     };
                                 }
                             }
@@ -1066,7 +1084,7 @@
                             <div class="song-title">${song.title}</div>
                             <div class="song-artist">${song.artist}</div>
                         </div>
-                        <div class="song-duration">${song.api === 'qishui' ? '汽水' : '聚合'}</div>
+                        <div class="song-duration">${getApiDisplayName(song.api)}</div>
                     `;
                     li.addEventListener('click', () => {
                         playSong(song);
@@ -1074,6 +1092,16 @@
                     });
                     songList.appendChild(li);
                 });
+            }
+            
+            // 获取API显示名称
+            function getApiDisplayName(api) {
+                switch(api) {
+                    case 'juhe': return '聚合';
+                    case 'qishui': return '汽水';
+                    case 'wyy': return '网易';
+                    default: return api;
+                }
             }
             
             // 关闭搜索结果
@@ -1095,8 +1123,11 @@
                 if (song.api === 'juhe') {
                     // 聚合音乐详情请求 - 添加key参数
                     apiUrl = `${API_BASE_URL}?msg=${encodeURIComponent(song.query)}&type=text&n=${song.index}&key=${API_KEY}`;
-                } else {
+                } else if (song.api === 'qishui') {
                     apiUrl = `https://wwm.34bc.com/API/dg_qishuimusic.php?type=text&msg=${encodeURIComponent(song.query)}&n=${song.index}`;
+                } else if (song.api === 'wyy') {
+                    // 网易云音乐详情请求
+                    apiUrl = `${WYY_API_BASE_URL}?key=${WYY_API_KEY}&gm=${encodeURIComponent(song.query)}&n=${song.index}&type=text&br=1`;
                 }
                 
                 // 获取歌曲详情
@@ -1139,9 +1170,9 @@
                             console.error('播放错误:', error);
                         });
                         
-                        // 获取歌词（仅聚合API支持）
-                        if (song.api === 'juhe') {
-                            fetchLyrics(song.query, song.index);
+                        // 获取歌词（仅聚合API和网易云API支持）
+                        if (song.api === 'juhe' || song.api === 'wyy') {
+                            fetchLyrics(song.query, song.index, song.api);
                         } else {
                             lyricsData = [];
                             lyricsWrapper.innerHTML = '<div class="lyrics-line">汽水音乐暂不支持歌词显示</div>';
@@ -1174,7 +1205,7 @@
                             info.cover = line.replace('封面：', '').trim();
                         }
                     });
-                } else {
+                } else if (apiType === 'qishui') {
                     // 汽水音乐解析
                     lines.forEach(line => {
                         if (line.startsWith('歌名：')) {
@@ -1185,14 +1216,36 @@
                             info.url = line.replace('播放链接：', '').trim();
                         }
                     });
+                } else if (apiType === 'wyy') {
+                    // 网易云音乐解析
+                    lines.forEach(line => {
+                        if (line.startsWith('歌名：')) {
+                            info.title = line.replace('歌名：', '').trim();
+                        } else if (line.startsWith('歌手：')) {
+                            info.artist = line.replace('歌手：', '').trim();
+                        } else if (line.startsWith('播放链接：')) {
+                            info.url = line.replace('播放链接：', '').trim();
+                        }
+                        // 网易云音乐可能还有其他信息，如封面、专辑等
+                        else if (line.startsWith('封面：')) {
+                            info.cover = line.replace('封面：', '').trim();
+                        }
+                    });
                 }
                 
                 return info;
             }
             
-            // 获取歌词并解析（仅聚合API）
-            function fetchLyrics(query, index) {
-                const apiUrl = `https://www.hhlqilongzhu.cn/api/dg_geci.php?msg=${encodeURIComponent(query)}&n=${index}&type=text`;
+            // 获取歌词并解析（聚合API和网易云API）
+            function fetchLyrics(query, index, apiType) {
+                let apiUrl;
+                
+                if (apiType === 'juhe') {
+                    apiUrl = `https://www.hhlqilongzhu.cn/api/dg_geci.php?msg=${encodeURIComponent(query)}&n=${index}&type=text`;
+                } else if (apiType === 'wyy') {
+                    // 网易云歌词API（假设使用相同的歌词API，或者可以留空）
+                    apiUrl = `https://www.hhlqilongzhu.cn/api/dg_geci.php?msg=${encodeURIComponent(query)}&n=${index}&type=text`;
+                }
                 
                 fetch(apiUrl)
                     .then(response => {
@@ -1607,7 +1660,8 @@
             window.addEventListener('resize', updateLyricsPosition);
         });
     </script>
-    <div style="text-align: center; padding: 20px; color: var(--text-secondary);">Mango音乐-基于ZC音乐</div>
+    <div style="text-align: center; padding: 20px; color: var(--text-secondary);">Mango音乐</div>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon='{"version":"2024.11.0","token":"3629924dd2b547e094d1550ec6b1ce94","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 
 </html>
